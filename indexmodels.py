@@ -92,30 +92,6 @@ def rand_effect(df, yvar, xvar, groupvar, model='probit', cov_type='Ainv', theta
     print_output(res, ['parnames','theta_hat', 'se', 't-values', 'jac', 'APE'])
     return res
 
-def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', theta0=0, deriv=2):
-    print('Fixed Effects', model)
-    
-    Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
-    
-    # Likelihood function for fixed effects
-    Qfun = lambda beta, out: Q_pooled(y, x, T, beta, model, out)
-    
-    if np.isscalar(theta0): 
-        theta0 = np.zeros(k)
-    
-    res = M.estimation(Qfun, theta0=theta0, deriv=deriv, cov_type=cov_type, parnames=xvar)
-    
-    xb, Gx, gx = Qfun(res.theta_hat, out='predict')
-    APE = np.mean(gx) * res.theta_hat
-    
-    res.update(dict(zip(['yvar', 'xvar', 'Nobs', 'k', 'n', 'T', 'APE'], 
-                        [yvar, xvar, Nobs, k, n, T, APE])))
-
-    # Print output in formatted table
-    print_output(res, ['parnames', 'theta_hat', 'se', 't-values', 'jac', 'APE'])
-    
-    return res
-
 def Q_pooled(y, x, T, beta, model='probit', out='Q'):
     ''' Pooled linear index model for panel data. e.g pooled probit or logit
         y:      Nobs x 1 np.array of binary response data
@@ -198,6 +174,72 @@ def Q_RE(y, x, T, theta, model='probit', out='Q', R=20, rng=random.default_rng(s
     # 2nd order derivatives
     H=s_i.T@ s_i/n                                  # Alternative: use product of gradient as Hessian approximation
     if out=='H':    return H; 
+
+def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', theta0=0, deriv=2):
+    print('Fixed Effects', model)
+    
+    Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
+
+    # Identificér grupper uden variation i afhængig variabel (union)
+    df_grouped = df.groupby(groupvar)[yvar].nunique()
+    valid_groups = df_grouped[df_grouped > 1].index  # Behold kun grupper med variation
+    df = df[df[groupvar].isin(valid_groups)]
+    
+    Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
+
+    # Likelihood funktion til Fixed Effects Logit
+    Qfun = lambda beta, out: Q_FE(y, x, T, beta, model, out)
+    
+    if np.isscalar(theta0): 
+        theta0 = np.zeros(k)
+    
+    res = M.estimation(Qfun, theta0=theta0, deriv=deriv, cov_type=cov_type, parnames=xvar)
+    
+    xb, Gx, gx = Qfun(res.theta_hat, out='predict')
+    APE = np.mean(gx) * res.theta_hat
+    
+    res.update(dict(zip(['yvar', 'xvar', 'Nobs', 'k', 'n', 'T', 'APE'], 
+                        [yvar, xvar, Nobs, k, n, T, APE])))
+
+    # Print output i tabelformat
+    print_output(res, ['parnames', 'theta_hat', 'se', 't-values', 'jac', 'APE'])
+    
+    return res
+
+def Q_FE(y, x, T, beta, model='logit', out='Q'):
+    ''' Fixed Effects Logit model'''
+    
+    beta=np.array(beta).reshape(-1,1)             # Parametre
+    n = T.shape[0]                                # Antal grupper
+    xb = x @ beta                                 # Lineær indeks 
+    Gx = G(xb, model)                             # Respons sandsynlighed
+    gx = g(xb, model)                             # Densitet
+
+    Gx = np.minimum(np.maximum(Gx,1e-15),1-1e-15) # Truncér sandsynligheder
+
+    if out == 'predict':  
+        return xb, Gx, gx                        # Returnér forudsigelser
+
+    # Fixed Effects: Fjern grupper uden variation i Y
+    ll_it = np.log(Gx)*y + np.log(1-Gx)*(1-y)     # Log-likelihood bidrag
+    q_i = -sumby(ll_it, T)                        # (Negative) log-likelihood pr. gruppe
+
+    if out == 'Q': 
+        return np.mean(q_i)                       # Returnér Q (log-likelihood)
+
+    # 1. ordens afledte
+    s_it = gx * x * (y - Gx) / (Gx * (1 - Gx))    # Score
+    s_i = sumby(s_it, T)                          # Score pr. gruppe
+    
+    if out == 's_i':  
+        return s_i                                 # Returnér score
+    if out == 'dQ':  
+        return -np.mean(s_i, axis=0)               # Returnér gradient
+
+    # 2. ordens afledte (Hessian)
+    H = (gx * x).T @ (gx * x / (Gx * (1 - Gx))) / n
+    if out == 'H':  
+        return H
 
 def quad_xw(n=10, a=-1, b=1):
     '''
