@@ -182,8 +182,9 @@ def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', t
 
     # Identificér grupper uden variation i afhængig variabel (union)
     df_grouped = df.groupby(groupvar)[yvar].nunique()
-    valid_groups = df_grouped[df_grouped > 1].index  # Behold kun grupper med variation
+    valid_groups = df_grouped.index  # Beholder alle grupper (ingen fjernelse)
     df = df[df[groupvar].isin(valid_groups)]
+
     
     Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
 
