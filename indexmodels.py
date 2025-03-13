@@ -92,6 +92,30 @@ def rand_effect(df, yvar, xvar, groupvar, model='probit', cov_type='Ainv', theta
     print_output(res, ['parnames','theta_hat', 'se', 't-values', 'jac', 'APE'])
     return res
 
+def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', theta0=0, deriv=2):
+    print('Fixed Effects', model)
+    
+    Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
+    
+    # Likelihood function for fixed effects
+    Qfun = lambda beta, out: Q_pooled(y, x, T, beta, model, out)
+    
+    if np.isscalar(theta0): 
+        theta0 = np.zeros(k)
+    
+    res = M.estimation(Qfun, theta0=theta0, deriv=deriv, cov_type=cov_type, parnames=xvar)
+    
+    xb, Gx, gx = Qfun(res.theta_hat, out='predict')
+    APE = np.mean(gx) * res.theta_hat
+    
+    res.update(dict(zip(['yvar', 'xvar', 'Nobs', 'k', 'n', 'T', 'APE'], 
+                        [yvar, xvar, Nobs, k, n, T, APE])))
+
+    # Print output in formatted table
+    print_output(res, ['parnames', 'theta_hat', 'se', 't-values', 'jac', 'APE'])
+    
+    return res
+
 def Q_pooled(y, x, T, beta, model='probit', out='Q'):
     ''' Pooled linear index model for panel data. e.g pooled probit or logit
         y:      Nobs x 1 np.array of binary response data
