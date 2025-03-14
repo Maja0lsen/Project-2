@@ -175,9 +175,8 @@ def Q_RE(y, x, T, theta, model='probit', out='Q', R=20, rng=random.default_rng(s
     H=s_i.T@ s_i/n                                  # Alternative: use product of gradient as Hessian approximation
     if out=='H':    return H; 
 
-def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', theta0=0, deriv=2):
+def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='robust', theta0=0, deriv=2):
     print('Fixed Effects', model)
-    
     Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
 
     # Identificér grupper uden variation i afhængig variabel (union)
@@ -185,13 +184,11 @@ def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', t
     valid_groups = df_grouped[df_grouped > 1].index  # Beholder kun grupper med variation, men ikke for stramt
     df = df[df[groupvar].isin(valid_groups)]
 
-
-    
     Nobs, k, n, T, y, x = panel_setup(df, yvar, xvar, groupvar)
 
     # Likelihood funktion til Fixed Effects Logit
     Qfun = lambda beta, out: Q_FE(y, x, T, beta, model, out)
-    
+
     if np.isscalar(theta0): 
         theta0 = np.zeros(k)
     
@@ -207,6 +204,7 @@ def fixed_effect(df, yvar, xvar, groupvar, model='logit', cov_type='sandwich', t
     print_output(res, ['parnames', 'theta_hat', 'se', 't-values', 'jac', 'APE'])
     
     return res
+
 
 def Q_FE(y, x, T, beta, model='logit', out='Q'):
     ''' Fixed Effects Logit model'''
